@@ -1,4 +1,4 @@
-"""Rewrite the OSS section of README.md with the user's latest open or merged PRs to other people's repos."""
+"""Rewrite the OSS section of README.md with the user's merged or approved PRs to other people's repos."""
 import json
 import os
 import re
@@ -9,34 +9,28 @@ USER = os.environ.get("GH_USER", "aliassar")
 LIMIT = int(os.environ.get("OSS_LIMIT", "8"))
 README = "README.md"
 
-query = f"author:{USER} type:pr is:public -user:{USER} -is:draft"
-url = "https://api.github.com/search/issues?" + urllib.parse.urlencode(
-    {"q": query, "sort": "created", "order": "desc", "per_page": 50}
-)
-req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
-if token := os.environ.get("GITHUB_TOKEN"):
-    req.add_header("Authorization", f"Bearer {token}")
-items = json.load(urllib.request.urlopen(req))["items"]
 
-rows, seen = [], set()
-for pr in items:
-    merged = pr["pull_request"].get("merged_at")
-    if pr["state"] != "open" and not merged:
-        continue  # closed without merging: leave it off
+def search(qualifier):
+    query = f"author:{USER} type:pr is:public -user:{USER} {qualifier}"
+    url = "https://api.github.com/search/issues?" + urllib.parse.urlencode(
+        {"q": query, "sort": "created", "order": "desc", "per_page": 50}
+    )
+    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+    if token := os.environ.get("GITHUB_TOKEN"):
+        req.add_header("Authorization", f"Bearer {token}")
+    return json.load(urllib.request.urlopen(req))["items"]
+
+
+# the search API has no OR across qualifiers, so merge the two result sets
+prs = {pr["html_url"]: pr for pr in search("is:merged") + search("review:approved")}
+items = sorted(prs.values(), key=lambda pr: pr["created_at"], reverse=True)
+
+rows = []
+for pr in items[:LIMIT]:
     repo = "/".join(pr["repository_url"].split("/")[-2:])
-    if repo in seen:
-        continue  # one line per project keeps the list varied
-    seen.add(repo)
-    status = "✅ merged" if merged else "🟡 in review"
-    title = pr["title"].replace("|", "\\|")
-    rows.append(f"| [{repo}](https://github.com/{repo}) | [{title}]({pr['html_url']}) | {status} |")
-    if len(rows) == LIMIT:
-        break
-
-total = f"https://github.com/search?q={urllib.parse.quote(query)}&type=pullrequests"
-block = "\n".join(
-    ["| Project | Pull request | Status |", "|---|---|---|", *rows, "", f"<sub>[All my pull requests →]({total})</sub>"]
-)
+    status = "merged" if pr["pull_request"].get("merged_at") else "approved"
+    rows.append(f"- **[{repo}](https://github.com/{repo})**: [{pr['title']}]({pr['html_url']}) ({status})")
+block = "\n".join(rows) or "<sub>Coming soon.</sub>"
 
 with open(README, encoding="utf-8") as f:
     text = f.read()
