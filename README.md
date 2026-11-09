@@ -2,6 +2,6 @@
   <samp>
     <a href="https://github.com/aliassar?tab=repositories">projects</a> .
     <a href="https://job-swiper.vercel.app">job swiper</a> .
-    <a href="mailto:asdota7@gmail.com">email</a>
+    <a href="mailto:ali.assar37@gmail.com">email</a>
   </samp>
 </p>
